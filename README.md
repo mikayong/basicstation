@@ -1,0 +1,2 @@
+# basicstation
+lorawan basicstation
