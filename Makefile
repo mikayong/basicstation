@@ -35,9 +35,11 @@ endef
 
 define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build-linux-std/bin/station $(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build-linux-std/bin/* $(1)/usr/bin
+	$(INSTALL_DIR) $(1)/usr/lora
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/build-linux-std/tst/* $(1)/usr/lora
 	$(INSTALL_DIR) $(1)/etc/station
-	$(INSTALL_CONF) $(PKG_BUILD_DIR)/examples/live-s2.sm.tc/* $(1)/etc/station
+	$(INSTALL_CONF) $(PKG_BUILD_DIR)/examples/live-s2.sm.tc/*.* $(1)/etc/station
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
