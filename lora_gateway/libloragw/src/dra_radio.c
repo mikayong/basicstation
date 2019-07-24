@@ -11,6 +11,9 @@
 
 #include "radio.h"
 
+static uint8_t readReg(void *spi_target, uint8_t addr);
+static int writeReg(void *spi_target, uint8_t addr, uint8_t value);
+
 static const uint8_t rxlorairqmask[] = {
     [RXMODE_SINGLE] = IRQ_LORA_RXDONE_MASK|IRQ_LORA_RXTOUT_MASK|IRQ_LORA_CRCERR_MASK,
     [RXMODE_SCAN]   = IRQ_LORA_RXDONE_MASK|IRQ_LORA_CRCERR_MASK,
@@ -37,20 +40,22 @@ static int writeReg(void *spi_target, uint8_t addr, uint8_t value)
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-static void opmode (void *spi_target, uint8_t mode) {
+static void opmode (void *spi_target, uint8_t mode) 
+{
     writeReg(spi_target, SX1276_REG_LR_OPMODE, (readReg(spi_target, SX1276_REG_LR_OPMODE) & ~OPMODE_MASK) | mode);
 }
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-static void opmodeLora(void *spi_target) {
+static void opmodeLora(void *spi_target) 
+{
     uint8_t u = OPMODE_LORA | 0x8; // TBD: sx1276 high freq
     writeReg(spi_target, SX1276_REG_LR_OPMODE, u);
 }
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-void setpower(void *spi_target, uint8_t pw) {
+static void setpower(void *spi_target, uint8_t pw) {
     writeReg(spi_target, REG_PADAC, 0x87);
     if (pw < 5) pw = 5;
     if (pw > 20) pw = 20;
@@ -59,7 +64,7 @@ void setpower(void *spi_target, uint8_t pw) {
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-void setfreq(void *spi_target, long frequency)
+static void setfreq(void *spi_target, long frequency)
 {
     uint64_t frf = ((uint64_t)frequency << 19) / 32000000;
 
@@ -70,7 +75,7 @@ void setfreq(void *spi_target, long frequency)
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-void setsf(void *spi_target, int sf)
+static void setsf(void *spi_target, int sf)
 {
     if (sf < 6) {
         sf = 6;
@@ -92,7 +97,7 @@ void setsf(void *spi_target, int sf)
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-void setsbw(void *spi_target, long sbw)
+static void setsbw(void *spi_target, long sbw)
 {
     int bw;
 
@@ -123,7 +128,7 @@ void setsbw(void *spi_target, long sbw)
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-void setcr(void *spi_target, int denominator)
+static void setcr(void *spi_target, int denominator)
 {
     if (denominator < 5) {
         denominator = 5;
@@ -138,7 +143,7 @@ void setcr(void *spi_target, int denominator)
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-void setprlen(void *spi_target, long length)
+static void setprlen(void *spi_target, long length)
 {
     writeReg(spi_target, REG_PREAMBLE_MSB, (uint8_t)(length >> 8));
     writeReg(spi_target, REG_PREAMBLE_LSB, (uint8_t)(length >> 0));
@@ -146,14 +151,14 @@ void setprlen(void *spi_target, long length)
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-void setsyncword(void *spi_target, int sw)
+static void setsyncword(void *spi_target, int sw)
 {
     writeReg(spi_target, REG_SYNC_WORD, sw);
 }
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-void crccheck(void *spi_target, uint8_t nocrc)
+static void crccheck(void *spi_target, uint8_t nocrc)
 {
     if (nocrc)
         writeReg(spi_target, REG_MODEM_CONFIG2, readReg(spi_target, REG_MODEM_CONFIG2) & 0xfb);
@@ -165,7 +170,7 @@ void crccheck(void *spi_target, uint8_t nocrc)
 // Lora configure : Freq, SF, BW
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-bool get_radio_version(void *spi_target, uint8_t rstpin)
+static bool get_radio_version(void *spi_target, uint8_t rstpin)
 {
     digitalWrite(rstpin, LOW);
     sleep(1);
@@ -481,99 +486,3 @@ void single_tx(radiodev *dev, uint8_t *payload, int size) {
     opmode(dev->spiport, OPMODE_SLEEP);
 }
 
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-
-int lockfile(int fd)
-{
-    struct flock fl;
-
-    fl.l_type = F_WRLCK;
-    fl.l_start = 0;
-    fl.l_whence = SEEK_SET;
-    fl.l_len = 0;
-    return(fcntl(fd, F_SETLK, &fl));
-}
-
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-
-int already_running(void)
-{
-    int     fd;
-    char    buf[16];
-
-    fd = open(LOCKFILE, O_RDWR|O_CREAT, LOCKMODE);
-    if (fd < 0) {
-        fprintf(stderr, "ERROR~can't open %s: %s", LOCKFILE, strerror(errno));
-        exit(1);
-    }
-    if (lockfile(fd) < 0) {
-        if (errno == EACCES || errno == EAGAIN) {
-            close(fd);
-            return(1);
-        }
-        fprintf(stderr, "ERROR~can't lock %s: %s", LOCKFILE, strerror(errno));
-        exit(1);
-    }
-    ftruncate(fd, 0);
-    sprintf(buf, "%ld", (long)getpid());
-    write(fd, buf, strlen(buf)+1);
-    return(0);
-}
-
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-
-int32_t bw_getval(int x) {
-    switch (x) {
-        case BW_500KHZ: return 500000;
-        case BW_250KHZ: return 250000;
-        case BW_125KHZ: return 125000;
-        case BW_62K5HZ: return 62500;
-        case BW_31K2HZ: return 31200;
-        case BW_15K6HZ: return 15600;
-        case BW_7K8HZ : return 7800;
-        default: return -1;
-    }
-}
-
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-
-int32_t sf_getval(int x) {
-    switch (x) {
-        case DR_LORA_SF7: return 7;
-        case DR_LORA_SF8: return 8;
-        case DR_LORA_SF9: return 9;
-        case DR_LORA_SF10: return 10;
-        case DR_LORA_SF11: return 11;
-        case DR_LORA_SF12: return 12;
-        default: return -1;
-    }
-}
-
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-
-int32_t sf_toval(int x) {
-    switch (x) {
-        case 7: return DR_LORA_SF7; 
-        case 8: return DR_LORA_SF8; 
-        case 9: return DR_LORA_SF9;
-        case 10: return DR_LORA_SF10;
-        case 11: return DR_LORA_SF11;
-        case 12: return DR_LORA_SF12;
-        default: return -1;
-    }
-}
-
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-
-int32_t bw_toval(int x) {
-    switch (x) {
-        case 500000: return BW_500KHZ;
-        case 250000: return BW_250KHZ;
-        case 125000: return BW_125KHZ;
-        case 62500: return BW_62K5HZ;
-        case 31200: return BW_31K2HZ;
-        case 15600: return BW_15K6HZ;
-        case 7800: return BW_7K8HZ;
-        default: return -1;
-    }
-}
